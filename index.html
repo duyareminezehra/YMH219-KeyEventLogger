@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YMH219 - Key Event Logger (Web & Mobil)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 12px;
+      background: #0f172a; color: #f8fafc;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    .container { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+    header {
+      background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px 16px;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+    }
+    h1 { margin: 0; font-size: 18px; color: #38bdf8; }
+    .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; background: #16a34a; color: #fff; }
+    .badge.stopped { background: #dc2626; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; background: #1e293b; padding: 10px; border-radius: 8px; }
+    .btn { border: none; border-radius: 6px; padding: 8px 14px; font-weight: 700; color: #fff; cursor: pointer; }
+    .btn-start { background: #16a34a; }
+    .btn-stop { background: #dc2626; }
+    .btn-clear { background: #475569; }
+    .btn-export { background: #d97706; }
+    .test-input {
+      width: 100%; background: #020617; border: 2px dashed #38bdf8; border-radius: 8px;
+      padding: 12px; color: #facc15; font-size: 14px; outline: none; margin-top: 6px;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 280px; gap: 12px; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; }
+    .log-box {
+      height: 350px; background: #020617; border-radius: 6px; padding: 8px;
+      overflow-y: auto; font-family: monospace; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .log-entry { padding: 4px 8px; border-radius: 4px; background: #0f172a; border-left: 3px solid #38bdf8; }
+    .log-down { border-left-color: #10b981; }
+    .log-up { border-left-color: #f59e0b; }
+    .stat-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #334155; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>YMH219 — Key Event Logger (Eğitsel Klavye Günlüğü)</h1>
+        <div style="font-size:12.5px; color:#94a3b8;">Nesne Tabanlı Programlama 2. Ödev · <b>Emine Zehra Duyar (250541027)</b></div>
+      </div>
+      <div id="status-badge" class="badge">● KAYIT AKTİF</div>
+    </header>
+
+    <div class="toolbar">
+      <button id="btn-start" class="btn btn-start">▶ Kaydı Başlat</button>
+      <button id="btn-stop" class="btn btn-stop">⏹ Kaydı Durdur</button>
+      <button id="btn-clear" class="btn btn-clear">🗑️ Temizle</button>
+      <button id="btn-export" class="btn btn-export">💾 .txt Olarak İndir</button>
+    </div>
+
+    <div>
+      <input type="text" id="test-input" class="test-input" placeholder="Tuş olaylarını test etmek için buraya tıklayıp klavyenizden tuşlara basın..." />
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3 style="margin-top:0; color:#38bdf8; font-size:14px;">Canlı Tuş Olayları Günlüğü (KeyLogEntry)</h3>
+        <div id="log-box" class="log-box"></div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0; color:#facc15; font-size:14px;">Tuş İstatistikleri</h3>
+        <div class="stat-row"><span>Toplam Olay:</span><b id="stat-total" style="color:#38bdf8;">0</b></div>
+        <div class="stat-row"><span>Farklı Tuş Sayısı:</span><b id="stat-distinct" style="color:#34d399;">0</b></div>
+        <h4 style="margin:12px 0 6px 0; font-size:13px; color:#94a3b8;">En Sık Basılan İlk 5 Tuş:</h4>
+        <div id="top-keys"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isRecording = true;
+    const logs = [];
+    const counts = {};
+
+    const statusBadge = document.getElementById('status-badge');
+    const logBox = document.getElementById('log-box');
+    const statTotal = document.getElementById('stat-total');
+    const statDistinct = document.getElementById('stat-distinct');
+    const topKeys = document.getElementById('top-keys');
+    const testInput = document.getElementById('test-input');
+
+    function logKey(type, e) {
+      if (!isRecording) return;
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('tr-TR') + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      const keyName = e.key === ' ' ? 'Space' : e.key;
+      const code = e.code || e.keyCode;
+
+      const entry = { time: timeStr, type, key: keyName, code };
+      logs.unshift(entry);
+      counts[keyName] = (counts[keyName] || 0) + 1;
+
+      render();
+    }
+
+    testInput.addEventListener('keydown', (e) => logKey('KeyDown', e));
+    testInput.addEventListener('keyup', (e) => logKey('KeyUp', e));
+
+    document.getElementById('btn-start').onclick = () => {
+      isRecording = true;
+      statusBadge.innerText = '● KAYIT AKTİF';
+      statusBadge.className = 'badge';
+    };
+    document.getElementById('btn-stop').onclick = () => {
+      isRecording = false;
+      statusBadge.innerText = '■ DURDURULDU';
+      statusBadge.className = 'badge stopped';
+    };
+    document.getElementById('btn-clear').onclick = () => {
+      logs.length = 0;
+      for (let k in counts) delete counts[k];
+      render();
+    };
+    document.getElementById('btn-export').onclick = () => {
+      if (logs.length === 0) return alert('Kayıt yok!');
+      const text = logs.map(l => `[${l.time}] [${l.type}] Tuş: ${l.key} (Kod: ${l.code})`).join('\n');
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'keylog_kayitlari.txt';
+      a.click();
+    };
+
+    function render() {
+      statTotal.innerText = logs.length;
+      statDistinct.innerText = Object.keys(counts).length;
+
+      logBox.innerHTML = logs.slice(0, 50).map(l => `
+        <div class="log-entry ${l.type === 'KeyDown' ? 'log-down' : 'log-up'}">
+          <b>[${l.time}]</b> <span style="color:#facc15;">[${l.type}]</span> Tuş: <b>${l.key}</b> (Kod: ${l.code})
+        </div>
+      `).join('');
+
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      topKeys.innerHTML = sorted.map(([k, cnt], i) => `
+        <div class="stat-row">
+          <span>${i + 1}. <b>${k}</b></span>
+          <b style="color:#38bdf8;">${cnt} kez</b>
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
